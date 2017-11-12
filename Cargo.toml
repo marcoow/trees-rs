@@ -1,0 +1,6 @@
+[package]
+name = "trees-rb"
+version = "0.1.0"
+authors = ["Martin Muñoz <im.mmun@gmail.com>"]
+
+[dependencies]
