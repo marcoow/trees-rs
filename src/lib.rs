@@ -1,3 +1,5 @@
+#![feature(match_default_bindings, nll)]
+
 use std::mem;
 
 pub trait Key {
@@ -16,6 +18,7 @@ impl<T: Ord> Key for T {
 
 type Link<T> = Option<Box<Node<T>>>;
 
+#[derive(Debug)]
 struct Node<T> {
     data: T,
     left: Link<T>,
@@ -32,6 +35,7 @@ impl<T> Node<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct BST<T> {
     root: Link<T>,
 }
@@ -44,53 +48,39 @@ impl<T: Key> BST<T> {
     pub fn find(&mut self, key: &T::Key) -> Option<&mut T> {
         let link = self.link(key);
 
-        match *link {
+        match link {
             None => None,
-            Some(ref mut node) => Some(&mut node.data),
+            Some(node) => Some(&mut node.data),
         }
     }
 
     pub fn insert(&mut self, data: T) {
         let link = self.link(data.key());
 
-        match *link {
-            Some(ref mut node) => node.data = data,
-            ref mut link => *link = Some(Box::new(Node::new(data))),
+        match link {
+            None => *link = Some(Box::new(Node::new(data))),
+            Some(node) => node.data = data,
         }
     }
 
-    // TODO: This is pretty painful. Try simplifying when non-lexical lifetimes lands.
     pub fn delete(&mut self, key: &T::Key) {
         let link = self.link(key);
 
-        match link.take() {
-            None => {}
-            Some(mut node) => {
-                *link = match node.right.take() {
-                    None => node.left,
-                    Some(mut right) => {
-                        {
-                            let mut successor = &mut right;
+        if let Some(node) = link {
+            let mut successor = &mut node.right;
 
-                            successor = loop {
-                                let tmp = successor;
-                                match tmp.left {
-                                    Some(ref mut left) => successor = left,
-                                    None => break tmp,
-                                }
-                            };
+            match successor {
+                None => *link = node.left.take(),
+                Some(right_node) => {
+                    let mut successor_node = right_node;
 
-                            mem::swap(&mut node.data, &mut successor.data);
-
-                            if let Some(right) = successor.right.take() {
-                                *successor = right;
-                            }
-                        }
-
-                        node.right = Some(right);
-
-                        Some(node)
+                    while let Some(left) = &mut successor_node.left {
+                        successor = &mut successor_node.left;
+                        successor_node = left;
                     }
+
+                    mem::swap(&mut node.data, &mut successor_node.data);
+                    *successor = successor_node.right.take();
                 }
             }
         }
@@ -100,10 +90,10 @@ impl<T: Key> BST<T> {
         let mut link = &mut self.root;
 
         loop {
-            link = match *{ link } {
-                Some(ref mut node) if key < node.data.key() => &mut node.left,
-                Some(ref mut node) if key > node.data.key() => &mut node.right,
-                ref mut link => return link,
+            link = match link {
+                Some(node) if key < node.data.key() => &mut node.left,
+                Some(node) if key > node.data.key() => &mut node.right,
+                _ => return link,
             }
         }
     }
